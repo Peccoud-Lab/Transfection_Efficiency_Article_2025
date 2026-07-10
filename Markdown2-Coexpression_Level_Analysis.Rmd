@@ -1,0 +1,590 @@
+
+```{r}
+library(flowCore)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(performance)
+library(broom)
+library(emmeans)
+library(ggplot2)
+library(ggpmisc)
+```
+
+
+```{r}
+
+
+file_location <- "Folder1-Flow_Cytometry_Data/Plate_001/Group_001"
+channel_names <- c("GFP-A", "CyRFP1-A", "mTagBFP2-A")
+fluore_cutoffs <- c(6500, 1000, 1000)
+FSC_cut <- c(0.6e6, 2.6e6)
+SSC_cut <- c(0.4e6, 2.4e6)
+
+
+```
+
+
+```{r}
+combs_chan <- unlist(lapply(1:length(channel_names), function(i) combn(channel_names, i, simplify = FALSE)), recursive = FALSE)
+combs_cut <- unlist(lapply(1:length(fluore_cutoffs), function(i) combn(fluore_cutoffs, i, simplify = FALSE)), recursive = FALSE)
+files <- list.files(file_location, full.names = TRUE)
+files <- files[!grepl("\\.DS_Store$", files)]
+
+```
+
+
+```{r}
+gate_sample <- function(sample_df, sample_id) {
+  as.data.frame(sample_df) %>%
+    filter(`SSC-H` > SSC_cut[1] & `SSC-H` < FSC_cut[2],
+           `FSC-H` > FSC_cut[1] & `FSC-H` < SSC_cut[2],
+           `GFP-A` > fluore_cutoffs[1],
+           `mTagBFP2-A` > fluore_cutoffs[3]) %>%
+    mutate(Sample = sample_id)
+}
+
+```
+
+```{r}
+
+# POST-mixed all 3 fluorophores
+df_all_post <- list()
+for (f in files) {
+  if (grepl("All", f) && grepl("POST", f)) {
+    data <- read.FCS(f, transformation = FALSE,truncate_max_range = FALSE)
+    df_all_post[[length(df_all_post) + 1]] <- exprs(data)
+  }
+}
+
+# PRE-mixed all 3 fluorophores
+df_all_pre <- list()
+for (f in files) {
+  if (grepl("All", f) && !grepl("POST", f)) {
+    data <- read.FCS(f, transformation = FALSE,truncate_max_range = FALSE)
+    df_all_pre[[length(df_all_pre) + 1]] <- exprs(data)
+  }
+}
+
+
+```
+
+
+```{r}
+gated_all_post <- map2_dfr(df_all_post, seq_along(df_all_post), gate_sample)
+gated_all_pre <- map2_dfr(df_all_pre, seq_along(df_all_pre), gate_sample)
+
+```
+
+
+```{r}
+TEXT_SIZE <- 18
+X_LIMITS1  <- c(0, 4600000)   # set to NULL if you don’t want to force
+Y_LIMITS1  <- c(0, 4600000)
+X_LIMITS2  <- c(0, 460000)   # set to NULL if you don’t want to force
+Y_LIMITS2  <- c(0, 460000)
+
+df <- gated_all_post
+g_df <- ggplot(df, aes(x = `GFP-A`, y = `mTagBFP2-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mTagBFP2-A") +
+  xlab("GFP-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS1,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_allpost_gb.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+g_df <- ggplot(df, aes(x = `GFP-A`, y = `mCyRFP1-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mCyRFP1-A") +
+  xlab("GFP-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS1,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_allpost_gr.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+
+g_df <- ggplot(df, aes(x = `mTagBFP2-A`, y = `mCyRFP1-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mCyRFP1-A")+
+  xlab("mTagBFP2-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS2,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_allpost_br.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+```
+
+
+
+
+
+
+```{r}
+
+
+X_LIMITS2  <- c(0, 46000)   # set to NULL if you don’t want to force
+Y_LIMITS2  <- c(0, 46000)
+df <- gated_all_pre
+g_df <- ggplot(df, aes(x = `GFP-A`, y = `mTagBFP2-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mTagBFP2-A") +
+  xlab("GFP-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS1,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_allpre_gb.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+g_df <- ggplot(df, aes(x = `GFP-A`, y = `mCyRFP1-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mCyRFP1-A") +
+  xlab("GFP-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS1,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_allpre_gr.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+
+g_df <- ggplot(df, aes(x = `mTagBFP2-A`, y = `mCyRFP1-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mCyRFP1-A")+
+  xlab("mTagBFP2-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS2,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_allpre_br.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+```
+
+
+
+
+
+```{r}
+df = gated_all_post
+mod_fluor <- lm(`mTagBFP2-A` ~ `GFP-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+mod_fluor <- lm(`mCyRFP1-A` ~ `GFP-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+mod_fluor <- lm(`mCyRFP1-A` ~ `mTagBFP2-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+```
+
+
+
+
+```{r}
+df = gated_all_pre
+mod_fluor <- lm(`mTagBFP2-A` ~ `GFP-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+mod_fluor <- lm(`mCyRFP1-A` ~ `GFP-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+mod_fluor <- lm(`mCyRFP1-A` ~ `mTagBFP2-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+```
+
+
+```{r}
+file_location <- "Folder1-Flow_Cytometry_Data/20250326-2and3colors/Unmixed"
+channel_names <- c("GFP-A", "CyRFP1-A", "mTagBFP2-A")
+fluore_cutoffs <- c(6500, 1000, 1000)
+FSC_cut <- c(0.6e6, 2.6e6)
+SSC_cut <- c(0.4e6, 2.4e6)
+
+```
+
+
+```{r}
+combs_chan <- unlist(lapply(1:length(channel_names), function(i) combn(channel_names, i, simplify = FALSE)), recursive = FALSE)
+combs_cut <- unlist(lapply(1:length(fluore_cutoffs), function(i) combn(fluore_cutoffs, i, simplify = FALSE)), recursive = FALSE)
+files <- list.files(file_location, full.names = TRUE)
+files <- files[!grepl("\\.DS_Store$", files)]
+
+```
+
+```{r}
+gate_sample <- function(sample_df, sample_id) {
+  as.data.frame(sample_df) %>%
+    filter(`SSC-H` > SSC_cut[1] & `SSC-H` < FSC_cut[2],
+           `FSC-H` > FSC_cut[1] & `FSC-H` < SSC_cut[2],
+           `GFP-A` > fluore_cutoffs[1],
+           `mTagBFP2-A` > fluore_cutoffs[3]) %>%
+    mutate(Sample = sample_id)
+}
+
+```
+
+```{r}
+files <- list.files(file_location, full.names = TRUE)
+files <- files[!grepl("\\.DS_Store$", files)]  # drop system files
+
+# Patterns to keep
+patterns <- c("pV47")
+
+# Filter files that contain ANY of those patterns
+files_keep <- files[grepl(paste(patterns, collapse = "|"), files)]
+
+# Load and tag
+df_list <- lapply(files_keep, function(f) {
+  data <- read.FCS(f, transformation = FALSE, truncate_max_range = FALSE)
+  as.data.frame(exprs(data)) %>%
+    mutate(Sample = basename(f))
+})
+```
+
+```{r}
+# Apply gating to all in df_bg_pre and merge into one dataframe
+gated_df_list <- map2_dfr(df_list, seq_along(df_list), gate_sample)
+
+```
+
+
+
+```{r}
+
+
+X_LIMITS1  <- c(0, 4600000)   # set to NULL if you don’t want to force
+Y_LIMITS1  <- c(0, 4600000)
+X_LIMITS2  <- c(0, 460000)   # set to NULL if you don’t want to force
+Y_LIMITS2  <- c(0, 460000)
+df <- gated_df_list
+g_df <- ggplot(df, aes(x = `GFP-A`, y = `mTagBFP2-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mTagBFP2-A") +
+  xlab("GFP-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS1,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_pV47_gb.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+g_df <- ggplot(df, aes(x = `GFP-A`, y = `mCyRFP1-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mCyRFP1-A") +
+  xlab("GFP-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS1,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_pV47_gr.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+
+g_df <- ggplot(df, aes(x = `mTagBFP2-A`, y = `mCyRFP1-A`)) + 
+  theme_bw() +
+  geom_point(alpha = 0.3, size = 0.6) + 
+  ylab("mCyRFP1-A")+
+  xlab("mTagBFP2-A") +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    formula = y ~ x, parse = TRUE,
+    size = TEXT_SIZE * 0.35,   # scale relative to TEXT_SIZE
+    npcx = 0.95, npcy = 0.9
+  ) +
+  theme(
+    axis.text  = element_text(size = TEXT_SIZE * 0.9),
+    axis.title = element_text(size = TEXT_SIZE)
+  ) +
+  coord_cartesian(
+    xlim = X_LIMITS2,
+    ylim = Y_LIMITS2
+  )
+
+g_df
+
+ggsave("Figures/Fig6/linear_regression_pV47_br.svg", plot = g_df, width = 6, height = 4, device = "svg")
+
+```
+
+
+```{r}
+df = gated_df_list
+mod_fluor <- lm(`mTagBFP2-A` ~ `GFP-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+mod_fluor <- lm(`mCyRFP1-A` ~ `GFP-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+mod_fluor <- lm(`mCyRFP1-A` ~ `mTagBFP2-A`, data = df)
+performance::check_model(mod_fluor, check = "linearity")
+performance::check_model(mod_fluor, check = "homogeneity")
+performance::check_model(mod_fluor, check = "qq")
+tidy(mod_fluor, conf.int = TRUE, conf.level = 0.95)
+anova(mod_fluor)
+
+```
+
+
+```{r}
+channels <- c("mCyRFP1-A", "GFP-A", "mTagBFP2-A")
+
+
+calc_means <- function(df, channel) {
+  df %>%
+    group_by(Sample) %>%
+    summarize(
+      mean = mean(.data[[channel]], na.rm = TRUE),
+      .groups = "drop"
+    )
+}
+
+results <- map(channels, function(ch) {
+
+  means_list <- calc_means(gated_df_list, ch)
+  means_pre  <- calc_means(gated_all_pre, ch)
+  means_post <- calc_means(gated_all_post, ch)
+
+  plot_df <- bind_rows(
+    means_pre  %>% mutate(Group = "Pre mix"),
+    means_post %>% mutate(Group = "Post mix"),
+    means_list %>% mutate(Group = "Single plasmid")
+  ) %>%
+    mutate(Group = factor(Group, levels = c("Pre mix", "Post mix", "Single plasmid")))
+
+  tests <- tibble(
+    comparison = c("Single plasmid vs Post mix", 
+                   "Single plasmid vs Pre mix", 
+                   "Pre mix vs Post mix"),
+    p.value = c(
+      t.test(means_list$mean, means_post$mean)$p.value,
+      t.test(means_list$mean, means_pre$mean)$p.value,
+      t.test(means_pre$mean, means_post$mean)$p.value
+    )
+  ) %>%
+    mutate(
+      p.adj = p.adjust(p.value, method = "BH")
+    )
+
+  p <- ggplot(plot_df, aes(Group, mean, fill = Group)) +
+    geom_boxplot(
+      width = 0.55,
+      outlier.shape = NA,
+      alpha = 0.8,
+      linewidth = 0.4
+    ) +
+    geom_jitter(
+      width = 0.08,
+      size = 2.5,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(values = c(
+      "Pre mix" = "#D9D9D9",
+      "Post mix" = "#969696",
+      "Single plasmid" = "#525252"
+    )) +
+    labs(
+      title = ch,
+      x = NULL,
+      y = "Mean fluorescence intensity (MFI)"
+    ) +
+    theme_classic(base_size = 13) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      axis.title.y = element_text(face = "bold"),
+      axis.text = element_text(color = "black"),
+      axis.line = element_line(linewidth = 0.5),
+      axis.ticks = element_line(linewidth = 0.5)
+    )
+
+  ggsave(
+    file.path("Figures/Fig6", paste0(make.names(ch), ".pdf")),
+    p,
+    width = 4,
+    height = 4,
+    dpi = 300
+  )
+
+  ggsave(
+    file.path("Figures/Fig6", paste0(make.names(ch), ".png")),
+    p,
+    width = 4,
+    height = 4,
+    dpi = 300
+  )
+
+  list(
+    means = list(
+      single_plasmid = means_list,
+      pre_mix = means_pre,
+      post_mix = means_post
+    ),
+    tests = tests,
+    plot = p
+  )
+})
+
+names(results) <- channels
+```
+
+
+```{r}
+results[["mCyRFP1-A"]]$tests
+
+results[["GFP-A"]]$tests
+
+results[["mTagBFP2-A"]]$tests
+```
+
+
+
+

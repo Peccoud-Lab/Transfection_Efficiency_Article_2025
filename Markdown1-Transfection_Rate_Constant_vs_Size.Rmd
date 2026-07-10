@@ -1,0 +1,160 @@
+
+
+```{r}
+library(lme4)
+library(tidyverse)
+library(car)
+library(ggplot2)
+library(broom)
+library(emmeans)
+library(ggpubr)
+library(caret)
+library(knitr)
+library(glue)
+library(ggplot2)
+library(ggpmisc)
+library(ggrepel)
+
+```
+
+
+```{r}
+
+
+df <- read.csv("Folder2-Model_Parameter_Fits/fitting_output.csv" )
+df$Estimate
+
+```
+
+
+
+```{r}
+
+genome_lengths <- c(4966,5223,7287,12027,16441)
+mean_pros = df$Estimate
+ci_width <- df$X95..CI.Upper.Bound - df$X95..CI.Lower.Bound
+weights <- ci_width / 2
+
+up = df$X95..CI.Upper.Bound
+down = df$X95..CI.Lower.Bound
+
+```
+
+
+```{r}
+
+df <- data.frame(genome_lengths,mean_pros,up, down)
+mod_gn <- lm(mean_pros~genome_lengths, data=df)
+performance::check_model(mod_gn, check="linearity")
+performance::check_model(mod_gn, check="homogeneity")
+performance::check_model(mod_gn, check="qq")
+## no apparent violations of assumptions
+tidy(mod_gn, conf.int=TRUE, conf.level=0.95)
+
+```
+```{r}
+df$plasmid <- c("Unsigned", "Signed", "pV18",     "pV19",     "pV20")
+df
+```
+
+```{r}
+g_df <- ggplot(df, aes(x = genome_lengths, y = mean_pros, label = plasmid)) + 
+  theme_bw() +
+  geom_point() + 
+  geom_text_repel(size = 3.5, max.overlaps = Inf, box.padding = 1, point.padding = 0.5) +
+  geom_errorbar(aes(ymin = up, ymax = down), width = 400) +
+  ylab(expression("Transfection Rate Constant (1/h)")) +
+  xlab("Plasmid Size (base pairs)") +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    label.x.npc = "right", label.y.npc = 0.9,
+    formula = y ~ x, parse = TRUE, size = 5
+  )+
+ theme(
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14),
+
+  )
+ggsave("Figures/Fig3/linear_regression.svg", plot = g_df, width = 6, height = 4, device = "svg")
+g_df
+
+```
+
+
+
+```{r}
+df <- read.csv("plasmid_summary.csv", row.names = 1, check.names = FALSE)
+
+
+summary_df <- df %>%
+group_by(Plasmid) %>%
+summarise(
+n      = sum(!is.na(`# Plasmids per cell`) & !is.na(`Percent Positive`)),
+mean_x = mean(`# Plasmids per cell`, na.rm = TRUE),
+sd_x   = sd(`# Plasmids per cell`,   na.rm = TRUE),
+mean_y = mean(`Percent Positive`,    na.rm = TRUE),
+sd_y   = sd(`Percent Positive`,      na.rm = TRUE),
+.groups = "drop"
+) %>%
+mutate(
+se_x  = sd_x / sqrt(pmax(n, 1)),
+se_y  = sd_y / sqrt(pmax(n, 1)),
+tcrit = qt(0.975, df = pmax(n - 1, 1)),
+ci_x  = tcrit * se_x,
+ci_y  = tcrit * se_y,
+x_min = mean_x - ci_x,
+x_max = mean_x + ci_x,
+y_min = mean_y - ci_y,
+y_max = mean_y + ci_y
+)
+
+```
+
+```{r}
+summary_df
+```
+
+
+
+
+```{r}
+
+mod_xy <- lm(mean_y ~ mean_x, data = summary_df)
+
+
+performance::check_model(mod_xy, check = "linearity")
+performance::check_model(mod_xy, check = "homogeneity")
+performance::check_model(mod_xy, check = "qq")
+
+
+tidy(mod_xy, conf.int = TRUE, conf.level = 0.95)
+
+```
+
+
+```{r}
+g_df <- ggplot(summary_df, aes(x = mean_x, y = mean_y, label = Plasmid)) + 
+  theme_bw() +
+  geom_point() + 
+  geom_text_repel(size = 3.5, max.overlaps = Inf, box.padding = 1, point.padding = 0.2) +
+  geom_errorbar(aes(ymin = y_min, ymax = y_max), width = 20000) +
+xlab("# Plasmids per Cell") +
+ylab("Percent GFP Positive") +
+  geom_smooth(method = "lm", se = TRUE) +
+  stat_poly_eq(
+    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")),
+    label.x.npc = "right", label.y.npc = 0.9,
+    formula = y ~ x, parse = TRUE, size = 5
+  )+
+  coord_cartesian(ylim = c(0, 65))+
+ theme(
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14),
+  )
+
+ggsave("Figures/Fig3/plasmids_percell_vs_percentpositive_mean95CI.svg", plot = g_df, width = 6, height = 4, device = "svg")
+g_df
+```
+
+
