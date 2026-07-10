@@ -1,7 +1,7 @@
 # Bigger Is Better Than Many: Optimizing Multi-Gene Co-Expression with Single-Plasmid Designs
 
 > Code and data accompanying the manuscript: **“Bigger Is Better Than Many: A Strategy to Optimize Multi-Gene Co-Expression.”**  
-> Sarah I. Hernandez, Casey-Tyler Berezin, Miranda Nowak, Jean Peccoud, Connor King (Colorado State University).
+> Sarah I. Hernandez, Casey-Tyler Berezin, Miranda Nowak, Jean Peccoud, Connor King.
 
 ---
 ## Repository Structure (List + Brief Descriptions)
